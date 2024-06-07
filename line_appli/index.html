@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase_version9_RealtimeDB(G'sACADEMY初学者用サンプル)</title>
+    <link rel="stylesheet" href="css/reset.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <h1>チャットアプリ</h1>
+    <!-- コンテンツ表示画面 -->
+    <div>
+        <!-- 各場所にidを設定しましょう -->
+        <div>
+            <input type="text" id="uname" placeholder="名前を入力してください">
+        </div>
+        
+        <div id="top">
+            <div>
+                <textarea id="text" placeholder="文章を入力してください"></textarea>
+            </div>
+            <button id="send">送信</button>
+            <input type="file" id="imageUpload" style="display: none;" />
+            <button id="img_send">画像</button>
+        </div>
+        
+        <!-- style.cssに "overflow: auto;"を書いてみましょう！※最後に -->
+        <div id="output"></div>
+    </div>
+
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-app.js";
+        import { getDatabase, ref, push, set, update, onChildAdded, remove, onChildRemoved, onChildChanged } //ここで使うFirebase関数を全て呼び出す必要あり
+            from "https://www.gstatic.com/firebasejs/9.1.0/firebase-database.js";
+        
+            // Firebase Storage SDKを追加
+        import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject} 
+            from "https://www.gstatic.com/firebasejs/9.1.0/firebase-storage.js";
+        
+        
+            // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD0wnu-0OzcPK9SwBoXfP51Qur4vyD-aQM",
+            authDomain: "gsdev27-a260b.firebaseapp.com",
+            projectId: "gsdev27-a260b",
+            storageBucket: "gsdev27-a260b.appspot.com",
+            messagingSenderId: "785458178412",
+            appId: "1:785458178412:web:dc5e0f95b0214ca546ab49"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app); //RealtimeDBに接続
+        const dbRef = ref(db, "chat"); //RealtimeDB内の"chat"を使う
+        const storage =getStorage(app); //Firebase storageに接続
+
+        // 1桁の時に頭に0をつけるfunctionを設定
+        function pedZero(num) {
+            return num <10 ? '0' + num : num;
+        }
+
+        //データ登録(Click)
+        $("#send").on("click", function(){
+                const uname =$("#uname").val();
+               
+                //日時を取得するロジック
+                    var now = new Date();
+                    var month = pedZero(now.getMonth() + 1); // 月は0から始まるため+1
+                    var date = pedZero(now.getDate());
+                    var hours = pedZero(now.getHours());
+                    var minutes = pedZero(now.getMinutes());
+                    var timeString = month + '/'+ date + ' ' +hours + ':' + minutes;
+                
+                const text = $("#text").val();
+                
+                // 表示の確認
+                console.log(uname, "名前")
+                console.log(timeString, "時刻")
+                console.log(text, "テキスト")
+
+                // 送信のデータの塊を作成(オブジェクト)
+                const msg = {
+                    uname: $("#uname").val(),
+                    time:timeString,
+                    text: $("#text").val(),
+                }
+
+                // 送信処理を記載
+                // firebaseにpush=送る準備をするdbRefはキーの情報
+                const newPostRef = push(dbRef)
+                set(newPostRef, msg)
+
+                // 送信した後に入力欄を空にし、入力しやすくする
+                $("#uname").val("");
+                $("#text").val("");
+        });
+
+        //データ登録(Enter)
+
+        //最初にデータ取得＆onSnapshotでリアルタイムにデータを取得
+        // onChildAddedはJ scriptではなくfirebaseの関数
+        onChildAdded(dbRef, function(data){
+            const msg = data.val();
+            const key = data.key; //削除・更新に必須
+
+            let h = '<p id="'+key+'">';
+                h += msg.uname
+                h += "　"
+                h += msg.time
+                h += "　　　　"
+                h += '<span class="remove" data-key="'+key+'">削除</span>'
+                h += "　"
+                h += '<span class="update" data-key="'+key+'">更新</span>'
+                h += '<br>';
+                h += '<br>';
+                h += '<span contentEditable = "true" id="'+key+'_update">'+msg.text+'</span>';
+                h += '</p>'
+
+            console.log(h)
+
+            // <div class="msg">
+                // <p>${msg.uname} ${msg.time}</p>
+                // <p>${msg.text} </p>
+            //   </div>
+            
+            // #outputの最後に追加
+            $("#output").append(h);
+
+        })
+
+        // 削除イベント
+        $("#output").on("click", ".remove", function(){
+            const key = $(this).attr("data-key");
+            const remove_item = ref(db, "chat/"+key);
+            remove(remove_item); //Firebaseデータ削除関数
+        });
+        
+        //更新イベント
+        $("#output").on("click", ".update", function(){
+            const key = $(this).attr("data-key");
+            update(ref(db, "chat/"+key),{
+                text: $("#"+key+'_update').html()
+            })
+        });
+        
+        // 削除処理がFirebase側で実行されたらイベント発生！
+         onChildRemoved(dbRef,(data) =>{
+            $("#"+data.key).remove(); //DOM操作関数（対象を削除）
+         });
+
+         //更新処理がFirebase側で事項されたらイベント発生
+         onChildChanged(dbRef, (data) =>{
+            $("#"+data.key+'_update').html(data.val().text);
+            $("#"+data.key+'_update').fadeOut(800).fadeIn(800);
+         });
+
+        //画像取り込み
+        $("#img_send").on("click", function(){
+            $("#imageUpload").click(); //ファイルインプットをトリガー。非表示にしてあり直接クリックできないImageUploadをプログラム的にクリック 
+        });
+
+        $('#imageUpload').change(function(event){
+            var file =event.target.files[0]; //選択されたファイルを取得
+            
+        
+        //displayImageInChatを定義する
+        function displayImageInChat(file, url) {
+                
+                const uname = $("#uname").val() || "匿名";
+                var now = new Date();
+                var month = pedZero(now.getMonth() + 1); // 月は0から始まるため+1
+                var date = pedZero(now.getDate());
+                var hours = pedZero(now.getHours());
+                var minutes = pedZero(now.getMinutes());
+                var timeString = month + '/' + date + ' ' + hours + ':' + minutes;
+
+                const newPostRef = push(dbRef);
+                set(newPostRef, {
+                    uname: uname,
+                    time: timeString,
+                    imageUrl: url, // 画像のURL
+                    imageName: file.name
+                    
+                }).then(() => {
+                    console.log("Image data saved to database!");
+                }).catch((error) => {
+                    console.error("Failed to save image data: ", error);
+                });
+
+                let content = `<p id="${newPostRef.key}">
+                    ${uname} ${timeString}
+                    <span class="remove_img" data-key="${newPostRef.key}">削除</span>
+                    <span class="update_img" data-key="${newPostRef.key}">更新</span>
+                    <br>
+                    <img src="${url}" style="max-width:200px;">
+                    <br>
+                    
+                </p>`;
+                $("#output").append(content);
+            }      
+
+                if (file) {
+                    var fileRef = storageRef(storage, 'images/' + file.name);
+                    var uploadTask = uploadBytesResumable(fileRef, file); //ファイルをFirebase storageにアップロード
+                    uploadTask.on('state_changed',
+                        function (snapshot) {
+                            var percentage = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                            console.log('Upload is ' + percentage + '% done');
+                        },
+                        function error(err) {
+                            console.error('Upload failed:', err);
+                        },
+                        function complete() {
+                            getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+                                console.log('File available at', downloadURL);
+                                displayImageInChat(file, downloadURL); // ここでダウンロードURLを使用
+                                console.log(file)
+                            }).catch((error) => {
+                                console.error('Error getting download URL:', error);
+                            });
+                        }
+                    );
+                }
+            
+                    // onChildAdded(dbRef, function(snapshot) {
+                    //     const data = snapshot.val();
+                    //     console.log(data);  // デバッグ情報としてデータを出力
+                    //     if (data.imageUrl) {
+                    //         console.log(data.imageUrl)
+                    //         displayImageInChat(data.imageUrl);
+                    //     } else {
+                    //         console.error('Image URL is missing from the data');
+                    //     }
+                    // });
+        
+
+           
+
+        });
+
+
+   // 画像削除イベント
+    $("#output").on("click", ".remove_img", function(){
+        const key = $(this).attr("data-key");
+        const filename = key.substring(4); // keyから"img_"を削除してファイル名を取得
+        const imgRef = storageRef(storage, 'images/' + filename);
+        if (!imgRef) {
+            console.error("Failed to get reference for the file:", filename);
+            return;
+        }
+        deleteObject(imgRef) // Firebase Storageからの正しい削除方法
+        .then(() => {
+            console.log("Image successfully deleted!");
+            $("#" + key).remove(); // DOMから画像を削除
+        })
+        .catch((error) => {
+            console.error("Error removing image: ", error);
+        });
+    });
+
+
+
+    </script>
+</body>
+
+</html>
